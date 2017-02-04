@@ -1,1 +1,7 @@
 language: cpp
+
+script:
+  - ./autogen.sh
+  - ./configure --with-
+  - mvn
+  - ant
