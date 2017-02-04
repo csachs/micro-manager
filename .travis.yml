@@ -4,6 +4,8 @@ addons:
   apt:
     packages:
       - swig
+      - libboost-all-dev
+      - python3-dev
 
 script:
   - ./autogen.sh
