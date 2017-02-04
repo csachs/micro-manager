@@ -138,6 +138,7 @@ SUBDIRS = \
 	PrecisExcite \
 	Prior \
 	PriorLegacy \
+	PyCH \
 	Sapphire \
 	Scientifica \
 	SerialManager \

@@ -27,6 +27,9 @@ micromanager_path=${ac_pwd}/..
 MMDEVAPI_CXXFLAGS="-I${micromanager_path}/MMDevice ${BOOST_CPPFLAGS}"
 AC_SUBST(MMDEVAPI_CXXFLAGS)
 
+MMABSOLUTE_PATH="${micromanager_path}"
+AC_SUBST(MMABSOLUTE_PATH)
+
 # Find Micro-Manager static device library
 MMDEVAPI_LIBADD="${micromanager_path}/MMDevice/libMMDevice.la"
 AC_SUBST(MMDEVAPI_LIBADD)
@@ -465,6 +468,7 @@ m4_define([device_adapter_dirs], [m4_strip([
    PrincetonInstruments
    Prior
    PriorLegacy
+   PyCH
    QCam
    Sapphire
    Scientifica
