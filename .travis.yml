@@ -1,7 +1,17 @@
 language: cpp
 
+addons:
+  apt:
+    packages:
+      - swig
+
 script:
   - ./autogen.sh
-  - ./configure --with-
-  - mvn
-  - ant
+  - mkdir -p ImageJ/jars
+  - mvn org.apache.maven.plugins:maven-dependency-plugin:2.4:get -Dartifact=net.imagej:ij:LATEST -DrepoUrl=https://repo.maven.apache.org/maven2/ -Ddest=ImageJ/jars/ij.jar
+  - ./configure --enable-imagej-plugin=`pwd`/ImageJ
+  - make fetchdeps
+  - make
+  - make install
+  - cp bindist/any-platform/MMConfig_demo.cfg ImageJ/
+  - find `pwd`/ImageJ
