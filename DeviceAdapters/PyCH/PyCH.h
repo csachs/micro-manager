@@ -36,13 +36,17 @@ inline np::dtype dtype_conversion(size_t n) {
 
 class PythonImageCallback {
 public:
-   PythonImageCallback() : stateDevice_(0) {};
+   PythonImageCallback() : stateDevice_(0), bound(false) {};
 
    ~PythonImageCallback() {};
 
    int Initialize(MM::Device *host, MM::Core *core);
 
+   void unbindBuffer();
+
    void bindBuffer(unsigned char *buffer, size_t channels, size_t height, size_t width, size_t depth);
+
+   bool isBound();
 
    void execute();
 
@@ -59,6 +63,8 @@ public:
    MM::Core *GetCoreCallback();
 
 private:
+
+   bool bound;
 
    MM::State *stateDevice_;
 

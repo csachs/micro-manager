@@ -53,7 +53,7 @@ int PythonImageCallback::Initialize(MM::Device *host, MM::Core *core) {
    // can find symbols from libraries which in turn will be later loaded by python
    #ifdef _WIN32
    #else
-   dlopen("libpython3.5m.so", RTLD_LAZY | RTLD_GLOBAL);
+   dlopen(PYTHON_SHARED_OBJECT, RTLD_LAZY | RTLD_GLOBAL);
    #endif
 
    try {
@@ -139,9 +139,23 @@ void PythonImageCallback::bindBuffer(unsigned char *buffer, size_t channels, siz
             p::object()
       );
       main_namespace["_image_buffer"] = array;
+      bound = true;
    } catch (p::error_already_set const &) {
       PyErr_Print();
    }
+}
+
+void PythonImageCallback::unbindBuffer() {
+   try {
+      main_namespace["_image_buffer"] = 0;
+      bound = false;
+   } catch (p::error_already_set const &) {
+      PyErr_Print();
+   }
+}
+
+bool PythonImageCallback::isBound() {
+   return bound;
 }
 
 void PythonImageCallback::execute() {
@@ -436,6 +450,13 @@ int CPyCHCamera::SnapImage() {
       }
    }
 
+   if(!pyc_.isBound()) {
+      pyc_.bindBuffer(buffer_, channelCount_, GetImageHeight(), GetImageWidth(), GetImageBytesPerPixel());
+   }
+
+   pyc_.updateValuesChannelDevice();
+   pyc_.updateValuesXYZ();
+
    pyc_.execute();
 
    return DEVICE_OK;
@@ -463,8 +484,6 @@ long CPyCHCamera::GetLongProperty(const char *name) const {
 void CPyCHCamera::CreateBuffers() {
    planeSize_ = GetImageWidth() * GetImageHeight() * GetImageBytesPerPixel();
    buffer_ = new unsigned char[planeSize_ * channelCount_];
-
-   pyc_.bindBuffer(buffer_, channelCount_, GetImageHeight(), GetImageWidth(), GetImageBytesPerPixel());
 }
 
 void CPyCHCamera::FreeBuffers() {
