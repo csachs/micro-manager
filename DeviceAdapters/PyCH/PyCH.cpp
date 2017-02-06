@@ -28,7 +28,6 @@ const char *g_CameraDeviceName = "PyCHCamera";
 
 MODULE_API void InitializeModuleData() {
    RegisterDevice(g_CameraDeviceName, MM::CameraDevice, "PyCHCamera");
-   RegisterDevice("PyCHCamera", MM::CameraDevice, "PyCHCamera");
 }
 
 MODULE_API MM::Device *CreateDevice(const char *deviceName) {
@@ -73,7 +72,7 @@ int PythonImageCallback::Initialize(MM::Device *host, MM::Core *core) {
                     "    global _parameters\n"
                     "    _parameters = json.loads(s)", main_namespace);
       p::exec("def _callback(): pass", main_namespace);
-   }  catch(p::error_already_set const &) {
+   } catch (p::error_already_set const &) {
       PyErr_Print();
    }
 
@@ -83,7 +82,7 @@ int PythonImageCallback::Initialize(MM::Device *host, MM::Core *core) {
 void PythonImageCallback::runScript(std::string name) {
    try {
       p::exec_file(name.c_str(), main_namespace);
-   }  catch(p::error_already_set const &) {
+   } catch (p::error_already_set const &) {
       PyErr_Print();
    }
 }
@@ -107,41 +106,55 @@ void PythonImageCallback::updateValuesChannelDevice() {
    long channel = 0;
 
    if (stateDevice_) {
-         stateDevice_->GetPosition(channel);
+      stateDevice_->GetPosition(channel);
    }
 
    try {
       main_namespace["_channel"] = channel;
-   } catch(p::error_already_set const &) {
+   } catch (p::error_already_set const &) {
       PyErr_Print();
    }
 }
 
 
-void PythonImageCallback::processBuffer(unsigned char *buffer, int channels, int height, int width, int depth) {
+void PythonImageCallback::setChannelDevice(std::string channelDevice){
+   std::string &device_ = channelDevice_;
+   device_ = channelDevice;
+   if (channelDevice_.length() > 0) {
+      MM::State *stateDevice_ = GetCoreCallback()->GetStateDevice(host_, channelDevice_.c_str());
+   } else {
+      stateDevice_ = NULL;
+   }
+}
+
+
+MM::Core *PythonImageCallback::GetCoreCallback() { return callback_; }
+
+std::string PythonImageCallback::getChannelDevice() { return channelDevice_; }
+
+void PythonImageCallback::bindBuffer(unsigned char *buffer, int channels, int height, int width, int depth) {
    try {
       np::ndarray array = np::from_data(
-            buffer, //const_cast<uint8_t *>(),
+            buffer,
             dtype_conversion(depth),
             p::make_tuple(channels, height, width),
             p::make_tuple(height * width * depth, width * depth, depth),
             p::object()
       );
-
       main_namespace["_image_buffer"] = array;
-
-      main_namespace["_callback"]();
-
-      //p::exec("_callback()", main_namespace);
-
-   } catch(p::error_already_set const &) {
+   } catch (p::error_already_set const &) {
       PyErr_Print();
    }
-};
+}
+
+void PythonImageCallback::execute() {
+   try {
+      main_namespace["_callback"]();
+   } catch (p::error_already_set const &) {
+      PyErr_Print();
+   }
+}
 
 
-
-const char* g_Undefined = "Undefined";
-const char* g_deviceNameMultiCameraPyCH = "MultiCameraPyCH";
 
 
