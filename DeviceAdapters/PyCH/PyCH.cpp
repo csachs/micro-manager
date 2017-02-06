@@ -38,6 +38,7 @@ MODULE_API void InitializeModuleData() {
    RegisterDevice(g_CameraDeviceName, MM::CameraDevice, "PyCH");
    RegisterDevice("EmptyCamera", MM::CameraDevice, "EmptyCamera");
    RegisterDevice("MultiPyCH", MM::CameraDevice, "MultiPyCH");
+   RegisterDevice("PyCHCamera", MM::CameraDevice, "PyCHCamera");
 }
 
 MODULE_API MM::Device *CreateDevice(const char *deviceName) {
@@ -51,6 +52,8 @@ MODULE_API MM::Device *CreateDevice(const char *deviceName) {
       return new CEmptyCam();
    } else if (strcmp(deviceName, "MultiPyCH") == 0) {
       return new CMultiCameraPyCH();
+   } else if (strcmp(deviceName, "PyCHCamera") == 0) {
+      return new CPyCHCamera();
    }
    return 0;
 }
@@ -92,6 +95,7 @@ int PythonImageCallback::Initialize(MM::Device *host, MM::Core *core) {
       PyErr_Print();
    }
 
+   return DEVICE_OK;
 }
 
 void PythonImageCallback::runScript(std::string name) {
@@ -172,6 +176,28 @@ void PythonImageCallback::processImage(ImgBuffer& img_) {
 }
 
 
+void PythonImageCallback::processBuffer(unsigned char *buffer, int channels, int height, int width, int depth) {
+   try {
+      np::ndarray array = np::from_data(
+            buffer, //const_cast<uint8_t *>(),
+            dtype_conversion(depth),
+            p::make_tuple(channels, height, width),
+            p::make_tuple(channels * height * width * depth, width * depth, depth),
+            p::object()
+      );
+
+      main_namespace["_image_buffer"] = array;
+
+      main_namespace["_callback"]();
+
+      //p::exec("_callback()", main_namespace);
+
+   } catch(p::error_already_set const &) {
+      PyErr_Print();
+   }
+}
+
+
 CPyCH::CPyCH() :
       CCameraBase<CPyCH>(),
       initialized_(false),
@@ -199,7 +225,7 @@ CPyCH::~CPyCH() {
 }
 
 void CPyCH::GetName(char *name) const {
-   // Return the name used to referr to this device adapte
+   // Return the name used to refer to this device adapter
    CDeviceUtils::CopyLimitedString(name, g_CameraDeviceName);
 }
 
@@ -953,6 +979,7 @@ bool CPyCH::PerformCallback(ImgBuffer &img) {
    pyc_.updateValuesChannelDevice();
    pyc_.processImage(img_);
 
+   return true;
 }
 
 
@@ -1043,8 +1070,26 @@ int CMultiCameraPyCH::Initialize()
    CPropertyAction* pAct = new CPropertyAction(this, &CMultiCameraPyCH::OnBinning);
    CreateProperty(MM::g_Keyword_Binning, "1", MM::Integer, false, pAct, false);
 
+   pAct = new CPropertyAction(this, &CMultiCameraPyCH::OnScript);
+   int nRet = CreateProperty("ScriptPath", "", MM::String, false, pAct, false);
+   assert(nRet == DEVICE_OK);
+
+   pyc_.Initialize(this, GetCoreCallback());
+
    initialized_ = true;
 
+   return DEVICE_OK;
+}
+
+int CMultiCameraPyCH::OnScript(MM::PropertyBase *pProp, MM::ActionType eAct) {
+   if (eAct == MM::BeforeGet) {
+      pProp->Set(scriptFile_.c_str());
+   } else if (eAct == MM::AfterSet) {
+      pProp->Get(scriptFile_);
+      if(scriptFile_ != "") {
+         pyc_.runScript(scriptFile_);
+      }
+   }
    return DEVICE_OK;
 }
 
@@ -1055,23 +1100,28 @@ void CMultiCameraPyCH::GetName(char* name) const
 
 int CMultiCameraPyCH::SnapImage()
 {
-   if (nrCamerasInUse_ < 1)
-      return ERR_NO_PHYSICAL_CAMERA;
-
-   if (!ImageSizesAreEqual())
-      return ERR_NO_EQUAL_SIZE;
-
-   PyCHMultiCameraSnapThread t[MAX_NUMBER_PHYSICAL_CAMERAS];
-   for (unsigned int i = 0; i < physicalCameras_.size(); i++)
    {
-      if (physicalCameras_[i] != 0)
-      {
-         t[i].SetCamera(physicalCameras_[i]);
-         t[i].Start();
+      if (nrCamerasInUse_ < 1)
+         return ERR_NO_PHYSICAL_CAMERA;
+
+      if (!ImageSizesAreEqual())
+         return ERR_NO_EQUAL_SIZE;
+
+      PyCHMultiCameraSnapThread t[MAX_NUMBER_PHYSICAL_CAMERAS];
+      for (unsigned int i = 0; i < physicalCameras_.size(); i++) {
+         if (physicalCameras_[i] != 0) {
+            t[i].SetCamera(physicalCameras_[i]);
+            t[i].Start();
+         }
       }
+      // I think that the PyCHMultiCameraSnapThread destructor waits until the SnapImage function is done
+      // So, we are likely to be waiting here until all cameras are done snapping
    }
-   // I think that the PyCHMultiCameraSnapThread destructor waits until the SnapImage function is done
-   // So, we are likely to be waiting here until all cameras are done snapping
+
+
+   pyc_.updateValuesXYZ();
+   pyc_.updateValuesChannelDevice();
+   pyc_.processImage(img_);
 
    return DEVICE_OK;
 }
