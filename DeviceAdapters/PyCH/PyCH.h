@@ -34,6 +34,12 @@ inline np::dtype dtype_conversion(size_t n) {
    }
 }
 
+inline std::string GetNameOfOtherDevice(MM::Device *device) {
+   char deviceName[MM::MaxStrLength];
+   device->GetName((char*)&deviceName);
+   return std::string(deviceName);
+}
+
 class PythonImageCallback {
 public:
    PythonImageCallback() : stateDevice_(0), bound(false) {};
@@ -42,23 +48,27 @@ public:
 
    int Initialize(MM::Device *host, MM::Core *core);
 
-   void unbindBuffer();
+   void UnbindBuffer();
 
-   void bindBuffer(unsigned char *buffer, size_t channels, size_t height, size_t width, size_t depth);
+   void BindBuffer(unsigned char *buffer, size_t channels, size_t height, size_t width, size_t depth);
 
-   bool isBound();
+   bool IsBound();
 
-   void execute();
+   void Execute();
 
-   void runScript(std::string name);
+   void RunScript(std::string name);
 
-   void updateValuesXYZ();
+   void UpdateValuesXYZ();
 
-   void updateValuesChannelDevice();
+   void UpdateValuesChannelDevice();
 
-   void setChannelDevice(std::string channelDevice);
+   std::string GetChannelDevice();
 
-   std::string getChannelDevice();
+   void SetChannelDevice(std::string channelDevice);
+
+   std::string GetParameters();
+
+   void SetParameters(std::string parametersStr);
 
    MM::Core *GetCoreCallback();
 
@@ -69,6 +79,8 @@ private:
    MM::State *stateDevice_;
 
    std::string channelDevice_;
+
+   std::string parametersStr_;
 
    MM::Device *host_;
    MM::Core *callback_;
@@ -116,6 +128,8 @@ public:
 
    int OnScript(MM::PropertyBase *pProp, MM::ActionType eAct);
 
+   int OnParameters(MM::PropertyBase *pProp, MM::ActionType eAct);
+
    int OnScriptChannelDevice(MM::PropertyBase *pProp, MM::ActionType eAct);
 
    int OnChannelCount(MM::PropertyBase *pProp, MM::ActionType eAct);
@@ -160,6 +174,8 @@ public:
 
    int SnapImage();
 
+   int InsertImage();
+
 private:
 
    std::vector<std::string> GetDevicesOfType(MM::DeviceType type);
@@ -186,6 +202,10 @@ private:
    std::vector<std::string> channelDevices_;
    std::string scriptFile_;
    PythonImageCallback pyc_;
+
+   MMThreadLock snapLock_, insertLock_;
+
+   void updateChannelCount(long count);
 };
 
 #endif //_PYCH_H_

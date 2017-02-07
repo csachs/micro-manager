@@ -14,6 +14,8 @@
 #ifdef _WIN32
 #else
 #include <dlfcn.h>
+#include <iostream>
+
 #endif
 
 const char *g_CameraDeviceName = "PyCHCamera";
@@ -65,12 +67,23 @@ int PythonImageCallback::Initialize(MM::Device *host, MM::Core *core) {
 
       np::initialize();
 
-      p::exec("_parameters = {}", main_namespace);
-      p::exec("def _set_parameters(s):\n"
-                    "    import json\n"
-                    "    global _parameters\n"
-                    "    _parameters = json.loads(s)", main_namespace);
-      p::exec("def _callback(): pass", main_namespace);
+      std::string python_startup = ""
+            "_image_buffer = 0\n"
+            "_x = 0.0\n"
+            "_y = 0.0\n"
+            "_z = 0.0\n"
+            "_channel = 0\n"
+            "_parameters = {}\n"
+            "def _set_parameters(s):\n"
+            "    import json\n"
+            "    global _parameters\n"
+            "    _parameters = json.loads(s)\n"
+            "def callback(image_buffer, **kwargs): pass\n"
+            "def _callback():\n"
+            "    return callback(_image_buffer, x=_x, y=_y, z=_z, channel=_channel, parameters=_parameters)\n"
+            "";
+
+      p::exec(python_startup.c_str(), main_namespace);
    } catch (p::error_already_set const &) {
       PyErr_Print();
    }
@@ -78,7 +91,7 @@ int PythonImageCallback::Initialize(MM::Device *host, MM::Core *core) {
    return DEVICE_OK;
 }
 
-void PythonImageCallback::runScript(std::string name) {
+void PythonImageCallback::RunScript(std::string name) {
    try {
       p::exec_file(name.c_str(), main_namespace);
    } catch (p::error_already_set const &) {
@@ -86,7 +99,7 @@ void PythonImageCallback::runScript(std::string name) {
    }
 }
 
-void PythonImageCallback::updateValuesXYZ() {
+void PythonImageCallback::UpdateValuesXYZ() {
    double x, y, z;
 
    GetCoreCallback()->GetXYPosition(x, y);
@@ -101,7 +114,7 @@ void PythonImageCallback::updateValuesXYZ() {
    }
 }
 
-void PythonImageCallback::updateValuesChannelDevice() {
+void PythonImageCallback::UpdateValuesChannelDevice() {
    long channel = 0;
 
    if (stateDevice_) {
@@ -115,21 +128,32 @@ void PythonImageCallback::updateValuesChannelDevice() {
    }
 }
 
-void PythonImageCallback::setChannelDevice(std::string channelDevice) {
-   std::string &device_ = channelDevice_;
-   device_ = channelDevice;
+std::string PythonImageCallback::GetChannelDevice() { return channelDevice_; }
+
+void PythonImageCallback::SetChannelDevice(std::string channelDevice) {
+   channelDevice_ = channelDevice;
    if (channelDevice_.length() > 0) {
-      MM::State *stateDevice_ = GetCoreCallback()->GetStateDevice(host_, channelDevice_.c_str());
+      stateDevice_ = GetCoreCallback()->GetStateDevice(host_, channelDevice_.c_str());
    } else {
       stateDevice_ = NULL;
    }
 }
 
+std::string PythonImageCallback::GetParameters() { return parametersStr_; }
+
+void PythonImageCallback::SetParameters(std::string parametersStr) {
+   parametersStr_ = parametersStr;
+   try {
+      main_namespace["_set_parameters"](parametersStr_);
+   } catch (p::error_already_set const &) {
+      PyErr_Print();
+   }
+}
+
+
 MM::Core *PythonImageCallback::GetCoreCallback() { return callback_; }
 
-std::string PythonImageCallback::getChannelDevice() { return channelDevice_; }
-
-void PythonImageCallback::bindBuffer(unsigned char *buffer, size_t channels, size_t height, size_t width, size_t depth) {
+void PythonImageCallback::BindBuffer(unsigned char *buffer, size_t channels, size_t height, size_t width, size_t depth) {
    try {
       np::ndarray array = np::from_data(
             buffer,
@@ -145,7 +169,7 @@ void PythonImageCallback::bindBuffer(unsigned char *buffer, size_t channels, siz
    }
 }
 
-void PythonImageCallback::unbindBuffer() {
+void PythonImageCallback::UnbindBuffer() {
    try {
       main_namespace["_image_buffer"] = 0;
       bound = false;
@@ -154,11 +178,11 @@ void PythonImageCallback::unbindBuffer() {
    }
 }
 
-bool PythonImageCallback::isBound() {
+bool PythonImageCallback::IsBound() {
    return bound;
 }
 
-void PythonImageCallback::execute() {
+void PythonImageCallback::Execute() {
    try {
       main_namespace["_callback"]();
    } catch (p::error_already_set const &) {
@@ -175,12 +199,14 @@ CPyCHCamera::CPyCHCamera() : CCameraBase(), buffer_(NULL), channelCount_(1), wid
 
    InitializeDefaultErrorMessages();
 
-   CreateProperty(MM::g_Keyword_Name, "a", MM::String, true);
-   CreateProperty(MM::g_Keyword_Description, "Description.", MM::String, true);
+   CreateProperty(MM::g_Keyword_Name, "PyCH", MM::String, true);
+   CreateProperty(MM::g_Keyword_Description, "Python Camera Hook, create or modify image data with Python.", MM::String, true);
 
    CreateProperty("ChannelCount", "1", MM::Integer, false,
                   new CPropertyAction(this, &CPyCHCamera::OnChannelCount), true);
 
+
+   updateChannelCount(1); // initialize internal data structures
 
 };
 
@@ -238,6 +264,8 @@ int CPyCHCamera::Initialize() {
 
    CreateProperty("ScriptPath", "", MM::String, false, new CPropertyAction(this, &CPyCHCamera::OnScript), false);
 
+   CreateProperty("ScriptParameters", "", MM::String, false, new CPropertyAction(this, &CPyCHCamera::OnParameters), false);
+
    CreateProperty("ChannelDevice", "", MM::String, false, new CPropertyAction(this, &CPyCHCamera::OnScriptChannelDevice), false);
 
    channelDevices_ = GetDevicesOfType(MM::StateDevice);
@@ -253,10 +281,11 @@ int CPyCHCamera::Initialize() {
 
 int CPyCHCamera::OnScriptChannelDevice(MM::PropertyBase *pProp, MM::ActionType eAct) {
    if (eAct == MM::BeforeGet) {
-      pProp->Set(pyc_.getChannelDevice().c_str());
+      pProp->Set(pyc_.GetChannelDevice().c_str());
    } else if (eAct == MM::AfterSet) {
       std::string channelDevice;
-      pyc_.setChannelDevice(channelDevice);
+      pProp->Get(channelDevice);
+      pyc_.SetChannelDevice(channelDevice);
    }
    return DEVICE_OK;
 }
@@ -268,13 +297,17 @@ int CPyCHCamera::OnChannelCount(MM::PropertyBase *pProp, MM::ActionType eAct) {
       long count;
       pProp->Get(count);
       if (count != channelCount_) {
-         FreeBuffers();
-         channelCount_ = (size_t)count;
-         selectedCamera_.resize(channelCount_);
-         CreateBuffers();
+         updateChannelCount(count);
       }
    }
    return DEVICE_OK;
+}
+
+void CPyCHCamera::updateChannelCount(long count) {
+   FreeBuffers();
+   channelCount_ = (size_t)count;
+   selectedCamera_.resize(channelCount_);
+   CreateBuffers();
 }
 
 int CPyCHCamera::OnChannel(MM::PropertyBase *pProp, MM::ActionType eAct, long channel) {
@@ -292,17 +325,6 @@ int CPyCHCamera::OnChannel(MM::PropertyBase *pProp, MM::ActionType eAct, long ch
          MM::Camera *camera = cameraDevices_[selectedCamera_[channel]];
 
          if (camera != cameraDevices_[index]) {
-
-            if (camera) {
-               camera->RemoveTag(MM::g_Keyword_CameraChannelName);
-               camera->RemoveTag(MM::g_Keyword_CameraChannelIndex);
-
-               char myName[MM::MaxStrLength];
-               GetLabel(myName);
-               camera->AddTag(MM::g_Keyword_CameraChannelName, myName, cameraNames_[selectedCamera_[channel]].c_str());
-               camera->AddTag(MM::g_Keyword_CameraChannelIndex, myName, convert<std::string>(channel).c_str());
-            }
-
             selectedCamera_[(size_t) channel] = (size_t)index;
          }
 
@@ -333,7 +355,7 @@ int CPyCHCamera::OnChannel(MM::PropertyBase *pProp, MM::ActionType eAct, long ch
 
 int CPyCHCamera::Shutdown() { return DEVICE_OK; };
 
-void CPyCHCamera::GetName(char *name) const { CDeviceUtils::CopyLimitedString(name, "PyCHCamera"); };
+void CPyCHCamera::GetName(char *name) const { CDeviceUtils::CopyLimitedString(name, g_CameraDeviceName); };
 
 long CPyCHCamera::GetImageBufferSize() const { return planeSize_; }
 
@@ -387,34 +409,57 @@ unsigned CPyCHCamera::GetImageHeight() const { return (unsigned)GetLongProperty(
 unsigned CPyCHCamera::GetImageBytesPerPixel() const { return (unsigned)GetLongProperty("Bytes"); }
 
 int CPyCHCamera::SnapImage() {
+
+   MMThreadGuard g(snapLock_);
+
    for (size_t i = 0; i < cameraSnapstate_.size(); i++) {
       cameraSnapstate_[i] = 0;
    }
 
    {
+
+      std::string ourModuleName = GetNameOfOtherDevice(this);  // mixing up ModuleName and Name?
+
+      bool threadedAcquisition = true;
+
+      assert(selectedCamera_.size() == channelCount_);
+
       // TODO inefficient to allocate and deallocate
-      std::vector<PyCHMultiCameraSnapThread *> cameraThreads(channelCount_);
+      std::vector<PyCHMultiCameraSnapThread *> cameraThreads(channelCount_, NULL);
 
       long c = 0;
       for (size_t i = 0; i < selectedCamera_.size(); i++) {
          if (cameraSnapstate_[selectedCamera_[i]])
             continue;
 
-         if (!cameraDevices_[selectedCamera_[i]])
+         MM::Camera *camera = cameraDevices_[selectedCamera_[i]];
+
+         if (!camera)
             continue;
 
-         cameraThreads[c] = new PyCHMultiCameraSnapThread();
+         std::string cameraModuleName = GetNameOfOtherDevice(camera);
 
-         cameraThreads[c]->SetCamera(cameraDevices_[selectedCamera_[i]]);
+         bool isPyCHCamera = (ourModuleName == cameraModuleName) && (ourModuleName != "");
+
+         threadedAcquisition = !isPyCHCamera;
+         threadedAcquisition = false; // it segfaults ...
+
          cameraSnapstate_[selectedCamera_[i]] = 1;
 
-         cameraThreads[c]->Start();
-
-         c++;
+         if(threadedAcquisition) {
+            cameraThreads[c] = new PyCHMultiCameraSnapThread();
+            cameraThreads[c]->SetCamera(camera);
+            cameraThreads[c]->Start();
+            c++;
+         } else {
+            camera->SnapImage();
+         }
       }
 
       for (size_t i = 0; i < c; i++) {
-         delete cameraThreads[c];
+         if(cameraThreads[c]) {
+            delete cameraThreads[c];
+         }
       }
    }
 
@@ -450,18 +495,54 @@ int CPyCHCamera::SnapImage() {
       }
    }
 
-   if(!pyc_.isBound()) {
-      pyc_.bindBuffer(buffer_, channelCount_, GetImageHeight(), GetImageWidth(), GetImageBytesPerPixel());
+   if(!pyc_.IsBound()) {
+      pyc_.BindBuffer(buffer_, channelCount_, GetImageHeight(), GetImageWidth(), GetImageBytesPerPixel());
    }
 
-   pyc_.updateValuesChannelDevice();
-   pyc_.updateValuesXYZ();
+   pyc_.UpdateValuesChannelDevice();
+   pyc_.UpdateValuesXYZ();
 
-   pyc_.execute();
+   pyc_.Execute();
 
    return DEVICE_OK;
 
 };
+
+int CPyCHCamera::InsertImage() {
+   MMThreadGuard g(insertLock_);
+
+   char label[MM::MaxStrLength];
+   this->GetLabel(label);
+
+   int ret = DEVICE_OK;
+
+   for(int channel = channelCount_-1; channel >= 0; channel--) {
+      Metadata md;
+      md.put("Camera", label);
+
+
+
+      md.put(MM::g_Keyword_CameraChannelName, cameraNames_[selectedCamera_[channel]].c_str());
+      md.put(MM::g_Keyword_CameraChannelIndex, convert<std::string>(channel).c_str());
+
+
+      ret = GetCoreCallback()->InsertImage(this, GetImageBuffer(channel), GetImageWidth(),
+                                               GetImageHeight(), GetImageBytesPerPixel(),
+                                               md.Serialize().c_str());
+
+      if(ret == DEVICE_BUFFER_OVERFLOW) {
+         if(!isStopOnOverflow()) {
+            channel ++;
+            GetCoreCallback()->ClearImageBuffer(this);
+            continue;
+         } else {
+            return ret;
+         }
+      }
+   }
+
+   return ret;
+}
 
 int CPyCHCamera::OnScript(MM::PropertyBase *pProp, MM::ActionType eAct) {
    if (eAct == MM::BeforeGet) {
@@ -469,8 +550,19 @@ int CPyCHCamera::OnScript(MM::PropertyBase *pProp, MM::ActionType eAct) {
    } else if (eAct == MM::AfterSet) {
       pProp->Get(scriptFile_);
       if (scriptFile_ != "") {
-         pyc_.runScript(scriptFile_);
+         pyc_.RunScript(scriptFile_);
       }
+   }
+   return DEVICE_OK;
+}
+
+int CPyCHCamera::OnParameters(MM::PropertyBase *pProp, MM::ActionType eAct) {
+   if (eAct == MM::BeforeGet) {
+      pProp->Set(pyc_.GetParameters().c_str());
+   } else if (eAct == MM::AfterSet) {
+      std::string p;
+      pProp->Get(p);
+      pyc_.SetParameters(p);
    }
    return DEVICE_OK;
 }
