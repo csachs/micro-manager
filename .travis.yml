@@ -6,6 +6,8 @@ addons:
       - swig
       - python-dev
       - python3-dev
+      - python-numpy
+      - python3-numpy
       # boost libs necessary for MMCore
       - libboost-date-time1.55-dev
       - libboost-system1.55-dev
@@ -26,6 +28,7 @@ script:
   - mvn org.apache.maven.plugins:maven-dependency-plugin:2.4:get -Dartifact=net.imagej:ij:LATEST -DrepoUrl=https://repo.maven.apache.org/maven2/ -Ddest=ImageJ/jars/ij.jar
   - mkdir -p ../3rdpartypublic/classext
   - wget -P ../3rdpartypublic/classext https://valelab4.ucsf.edu/svn/3rdpartypublic/classext/iconloader.jar
+  - wget -P ../3rdpartypublic/classext https://valelab4.ucsf.edu/svn/3rdpartypublic/classext/TSFProto.jar
   - ./configure --enable-imagej-plugin=`pwd`/ImageJ
   - make fetchdeps
   - make
