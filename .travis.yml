@@ -15,7 +15,7 @@ addons:
       # some additional libs necessary for additional device adapters
       # - libfreeimageplus-dev # not in precise
       # - libhidapi-dev # not in precise
-      - libdc1394-22-dev
+      # - libdc1394-22-dev # obviously as #529 is not merged, this will fail the build
       - libgphoto2-2-dev
       - libusb-dev
       - libopencv-dev
