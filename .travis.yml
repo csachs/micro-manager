@@ -6,13 +6,15 @@ addons:
       - swig
       - python-dev
       - python3-dev
-      - libboost-date-time1.55-dev # boost libs necessary for MMCore
+      # boost libs necessary for MMCore
+      - libboost-date-time1.55-dev
       - libboost-system1.55-dev
       - libboost-thread1.55-dev
-      - libfreeimageplus-dev # some additional libs necessary for additional device adapters
-      - libhidapi-dev
+      # some additional libs necessary for additional device adapters
+      # - libfreeimageplus-dev # not in precise
+      # - libhidapi-dev # not in precise
       - libdc1394-22-dev
-      - libgphoto2-dev
+      - libgphoto2-2-dev
       - libusb-dev
       - libopencv-dev
     sources:
@@ -22,6 +24,8 @@ script:
   - ./autogen.sh
   - mkdir -p ImageJ/jars
   - mvn org.apache.maven.plugins:maven-dependency-plugin:2.4:get -Dartifact=net.imagej:ij:LATEST -DrepoUrl=https://repo.maven.apache.org/maven2/ -Ddest=ImageJ/jars/ij.jar
+  - mkdir -p ../3rdpartypublic/classext
+  - wget -P ../3rdpartypublic/classext https://valelab4.ucsf.edu/svn/3rdpartypublic/classext/iconloader.jar
   - ./configure --enable-imagej-plugin=`pwd`/ImageJ
   - make fetchdeps
   - make
