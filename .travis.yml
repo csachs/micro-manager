@@ -4,8 +4,10 @@ addons:
   apt:
     packages:
       - swig
-      - boost1.55
       - python3-dev
+      - libboost-date-time1.55-dev
+      - libboost-system1.55-dev
+      - libboost-thread1.55-dev
     sources:
       - boost-latest
 
