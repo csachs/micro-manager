@@ -8,7 +8,7 @@ addons:
       - libboost-all-dev
       - python3-dev
     sources:
-      - sourceline: "deb http://archive.ubuntu.com/ubuntu/ xenial main universe"
+      - boost-latest
 
 script:
   - ./autogen.sh
