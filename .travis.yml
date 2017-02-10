@@ -1,11 +1,10 @@
-#sudo: required
 language: cpp
 
 addons:
   apt:
     packages:
       - swig
-      - libboost-all-dev
+      - boost1.55
       - python3-dev
     sources:
       - boost-latest
