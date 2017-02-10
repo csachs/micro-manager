@@ -4,10 +4,17 @@ addons:
   apt:
     packages:
       - swig
+      - python-dev
       - python3-dev
-      - libboost-date-time1.55-dev
+      - libboost-date-time1.55-dev # boost libs necessary for MMCore
       - libboost-system1.55-dev
       - libboost-thread1.55-dev
+      - libfreeimageplus-dev # some additional libs necessary for additional device adapters
+      - libhidapi-dev
+      - libdc1394-22-dev
+      - libgphoto2-dev
+      - libusb-dev
+      - libopencv-dev
     sources:
       - boost-latest
 
